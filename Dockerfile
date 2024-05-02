@@ -2,7 +2,6 @@ FROM alpine:3.19.1
 
 # Install required packages
 RUN apk add --no-cache \
-        boost \
         ca-certificates \
         curl \
         wget \
@@ -16,8 +15,7 @@ RUN apk add --no-cache \
         qt6-qtbase \
         qt6-qtsvg \
         qt6-qttools \
-        re2c \
-        zlib
+        qt6-qtbase-sqlite 
 
 # Compiling qBitTorrent following instructions on
 # https://github.com/qbittorrent/qBittorrent/wiki/Compilation:-Alpine-Linux
@@ -81,7 +79,6 @@ RUN git clone --shallow-submodules --recurse-submodules https://github.com/qbitt
         -D GUI=off \
         -D CMAKE_CXX_STANDARD=17 \
         -D BOOST_INCLUDEDIR="$HOME/boost_1_81_0/" \
-        -D CMAKE_CXX_STANDARD_LIBRARIES="/usr/lib/libexecinfo.so" \
         -D CMAKE_INSTALL_PREFIX="/usr/local" \
  && cmake --build build \
  && cmake --install build \
