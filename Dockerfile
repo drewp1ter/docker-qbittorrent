@@ -1,91 +1,87 @@
-FROM alpine:3.19.1
+FROM alpine:3.19.1 AS base
 
-# Install required packages
 RUN apk add --no-cache \
         ca-certificates \
         curl \
         wget \
         dumb-init \
-        icu \
-        elfutils-dev \
-        elfutils \
-        libtool \
-        openssl \
-        python3 \
         qt6-qtbase \
         qt6-qtsvg \
         qt6-qttools \
         qt6-qtbase-sqlite 
 
+FROM base as builder
+
 # Compiling qBitTorrent following instructions on
 # https://github.com/qbittorrent/qBittorrent/wiki/Compilation:-Alpine-Linux
 
+ARG BASE_DIR=/qbittorrent
+
 RUN set -x \
     # Install build dependencies
- && apk add --no-cache -t .build-deps \
+ && apk add --no-cache \
         autoconf \
         automake \
-        boost-dev \
         build-base \
         cmake \
         git \
-        libtool \
         linux-headers \
         perl \
         pkgconf \
-        python3 \
         python3-dev \
         re2c \
         tar \
         icu-dev \
         elfutils-dev \
-        elfutils \
         openssl-dev \
+        zlib-dev \
         qt6-qtbase-dev \
         qt6-qttools-dev \
-        zlib-dev \
-        qt6-qtsvg-dev \
-  && ln -s /usr/lib/libexecinfo.so.1 /usr/lib/libexecinfo.so
+        qt6-qtsvg-dev 
 
-RUN git clone --shallow-submodules --recurse-submodules https://github.com/ninja-build/ninja.git /tmp/ninja \
- && cd /tmp/ninja \
+RUN git clone --shallow-submodules --recurse-submodules https://github.com/ninja-build/ninja.git ${BASE_DIR}/ninja \
+ && cd ${BASE_DIR}/ninja \
  && git checkout "$(git tag -l --sort=-v:refname "v*" | head -n 1)" \
  && cmake -Wno-dev -B build \
         -D CMAKE_CXX_STANDARD=17 \
         -D CMAKE_INSTALL_PREFIX="/usr/local" \
  && cmake --build build \
  && cmake --install build
+
     # Boost build file.
-RUN wget --no-check-certificate https://altushost-swe.dl.sourceforge.net/project/boost/boost/1.81.0/boost_1_81_0.tar.gz -O "/tmp/boost-1.81.0.tar.gz" \
- && tar xf "/tmp/boost-1.81.0.tar.gz" -C /tmp
+RUN wget --no-check-certificate https://altushost-swe.dl.sourceforge.net/project/boost/boost/1.81.0/boost_1_81_0.tar.gz -O "${BASE_DIR}/boost-1.81.0.tar.gz" \
+ && tar xf "${BASE_DIR}/boost-1.81.0.tar.gz" -C ${BASE_DIR}
+ 
     # Libtorrent
-RUN git clone --shallow-submodules --recurse-submodules https://github.com/arvidn/libtorrent.git /tmp/libtorrent \
- && cd /tmp/libtorrent \
+RUN git clone --shallow-submodules --recurse-submodules https://github.com/arvidn/libtorrent.git ${BASE_DIR}/libtorrent \
+ && cd ${BASE_DIR}/libtorrent \
  && git checkout "$(git tag -l --sort=-v:refname "v2*" | head -n 1)" \
  && cmake -Wno-dev -G Ninja -B build \
         -D CMAKE_BUILD_TYPE="Release" \
         -D CMAKE_CXX_STANDARD=17 \
-        -D BOOST_INCLUDEDIR="$HOME/boost_1_81_0/" \
-        -D CMAKE_INSTALL_LIBDIR="lib" \
-        -D CMAKE_INSTALL_PREFIX="/usr/local" \
+        -D BOOST_INCLUDEDIR="${BASE_DIR}/boost_1_81_0/" \
  && cmake --build build \
  && cmake --install build
-    # Build qBittorrent
-RUN git clone --shallow-submodules --recurse-submodules https://github.com/qbittorrent/qBittorrent.git /tmp/qbittorrent \
- && cd /tmp/qbittorrent \
- && git checkout "$(git tag -l --sort=-v:refname | head -n 1)" \
- && cmake -Wno-dev -G Ninja -B build \
-        -D CMAKE_BUILD_TYPE="release" \
-        -D GUI=off \
-        -D CMAKE_CXX_STANDARD=17 \
-        -D BOOST_INCLUDEDIR="$HOME/boost_1_81_0/" \
-        -D CMAKE_INSTALL_PREFIX="/usr/local" \
- && cmake --build build \
- && cmake --install build \
-    # Clean-up
- && cd / \
- && apk del --purge .build-deps \
- && rm -rf /tmp/*
+
+RUN git clone --shallow-submodules --recurse-submodules https://github.com/qbittorrent/qBittorrent.git ${BASE_DIR}/source 
+
+WORKDIR ${BASE_DIR}/build
+
+RUN cmake ./../source \
+      -Wno-dev -G Ninja -B . \
+      -D CMAKE_BUILD_TYPE="Release" \
+      -D GUI=off \
+      -D CMAKE_CXX_STANDARD=17 \
+      -D BOOST_INCLUDEDIR="${BASE_DIR}/boost_1_81_0/" \
+      -D CMAKE_INSTALL_PREFIX="/usr/local" \
+  && cmake --build .
+
+FROM base AS runner
+
+ARG BASE_DIR=/qbittorrent
+
+COPY --from=builder ${BASE_DIR}/build/qbittorrent-nox /usr/local/bin
+COPY --from=builder /usr/local/lib/libtorrent* /usr/local/lib/
 
 RUN set -x \
     # Add non-root user
@@ -102,6 +98,7 @@ RUN set -x \
 
 # Default configuration file.
 COPY qBittorrent.conf /default/qBittorrent.conf
+
 COPY entrypoint.sh /
 
 VOLUME ["/config", "/torrents", "/downloads"]
