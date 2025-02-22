@@ -1,4 +1,4 @@
-FROM alpine:3.19.1 AS base
+FROM alpine:3.21 AS base
 
 RUN apk add --no-cache \
         ca-certificates \
@@ -10,7 +10,7 @@ RUN apk add --no-cache \
         qt6-qttools \
         qt6-qtbase-sqlite 
 
-FROM base as builder
+FROM base AS builder
 
 # Compiling qBitTorrent following instructions on
 # https://github.com/qbittorrent/qBittorrent/wiki/Compilation:-Alpine-Linux
@@ -49,8 +49,8 @@ RUN git clone --shallow-submodules --recurse-submodules https://github.com/ninja
  && cmake --install build
 
     # Boost build file.
-RUN wget --no-check-certificate https://altushost-swe.dl.sourceforge.net/project/boost/boost/1.81.0/boost_1_81_0.tar.gz -O "${BASE_DIR}/boost-1.81.0.tar.gz" \
- && tar xf "${BASE_DIR}/boost-1.81.0.tar.gz" -C ${BASE_DIR}
+RUN wget --no-check-certificate https://altushost-swe.dl.sourceforge.net/project/boost/boost/1.86.0/boost_1_86_0.tar.gz -O "${BASE_DIR}/boost-1.86.0.tar.gz" \
+ && tar xf "${BASE_DIR}/boost-1.86.0.tar.gz" -C ${BASE_DIR}
  
     # Libtorrent
 RUN git clone --shallow-submodules --recurse-submodules https://github.com/arvidn/libtorrent.git ${BASE_DIR}/libtorrent \
@@ -59,7 +59,7 @@ RUN git clone --shallow-submodules --recurse-submodules https://github.com/arvid
  && cmake -Wno-dev -G Ninja -B build \
         -D CMAKE_BUILD_TYPE="Release" \
         -D CMAKE_CXX_STANDARD=17 \
-        -D BOOST_INCLUDEDIR="${BASE_DIR}/boost_1_81_0/" \
+        -D BOOST_INCLUDEDIR="${BASE_DIR}/boost_1_86_0/" \
  && cmake --build build \
  && cmake --install build
 
@@ -72,9 +72,11 @@ RUN cmake ./../source \
       -D CMAKE_BUILD_TYPE="Release" \
       -D GUI=off \
       -D CMAKE_CXX_STANDARD=17 \
-      -D BOOST_INCLUDEDIR="${BASE_DIR}/boost_1_81_0/" \
+      -D BOOST_INCLUDEDIR="${BASE_DIR}/boost_1_86_0/" \
       -D CMAKE_INSTALL_PREFIX="/usr/local" \
   && cmake --build .
+
+RUN git clone --single-branch --branch latest-release https://github.com/VueTorrent/VueTorrent.git /tmp/vuetorrent  
 
 FROM base AS runner
 
@@ -82,6 +84,7 @@ ARG BASE_DIR=/qbittorrent
 
 COPY --from=builder ${BASE_DIR}/build/qbittorrent-nox /usr/local/bin
 COPY --from=builder /usr/local/lib/libtorrent* /usr/local/lib/
+COPY --from=builder /tmp/vuetorrent/ /vuetorrent  
 
 RUN set -x \
     # Add non-root user
